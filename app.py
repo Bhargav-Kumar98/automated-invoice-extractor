@@ -20,11 +20,11 @@ class Invoice(TypedDict):
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 # --- CACHED GOOGLE SHEETS CLIENT ---
-# Use st.experimental_singleton (or st.cache_resource in later versions) to reuse the connection
-@st.experimental_singleton
+# Use st.cache_resource to cache the connection
+@st.cache_resource
 def get_gs_client():
     scope = ["https://www.googleapis.com/auth/spreadsheets"]
-    # Read service account credentials from st.secrets. Ensure that your secrets file contains a table "gcp_service_account"
+    # Read service account credentials from st.secrets (ensure your secrets.toml contains a [gcp_service_account] table)
     creds = st.secrets["gcp_service_account"]
     credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds, scope)
     client = gspread.authorize(credentials)
@@ -33,7 +33,6 @@ def get_gs_client():
 # Function to update the Google Sheet with invoice data
 def update_google_sheet(invoice_data):
     try:
-        # Use the cached Google Sheets client
         client = get_gs_client()
         spreadsheet = client.open("Invoices")
         worksheet = spreadsheet.sheet1
@@ -46,7 +45,7 @@ def update_google_sheet(invoice_data):
         elif rows[0] != headers:
             worksheet.insert_row(headers, 1)
 
-        # Prepare record from invoice_data
+        # Prepare a record from invoice_data
         record = [
             invoice_data.get("invoice_number", "-"),
             invoice_data.get("customer_name", "-"),
@@ -55,10 +54,9 @@ def update_google_sheet(invoice_data):
             str(invoice_data.get("total_price", "-"))
         ]
 
-        # Check for duplicate invoice_number to update existing record
+        # Check for duplicate invoice_number to update an existing record
         existing_ids = worksheet.col_values(1)
         if invoice_data.get("invoice_number") in existing_ids:
-            # Update the row if invoice exists
             row_index = existing_ids.index(invoice_data["invoice_number"]) + 1
             for col_num, value in enumerate(record, start=1):
                 worksheet.update_cell(row_index, col_num, value)
@@ -87,14 +85,14 @@ with tabs[0]:
 with tabs[1]:
     camera_image = st.camera_input("Take Photo of Invoice")
 
-# Determine image source (only one option should be provided)
+# Determine the image source (only one option should be provided)
 img_source = None
 if uploaded_file is not None:
     img_source = uploaded_file
 elif camera_image is not None:
     img_source = camera_image
 
-# Processing button: triggers processing and Google Sheets update only if an image is provided
+# Processing button: triggers processing and Google Sheets update if an image is provided
 if st.button("⚡ Process & Update Automatically", type="primary"):
     if not img_source:
         st.warning("Please provide an invoice image using one of the tabs.")
@@ -102,7 +100,7 @@ if st.button("⚡ Process & Update Automatically", type="primary"):
 
     with st.spinner("Processing invoice..."):
         try:
-            # Load image from the provided source
+            # Load the image from the provided source
             img = Image.open(io.BytesIO(img_source.getvalue()))
             
             # Set up the Generative AI model and response configuration using the Invoice schema
@@ -112,7 +110,6 @@ if st.button("⚡ Process & Update Automatically", type="primary"):
                 response_schema=Invoice
             )
             
-            # Revised prompt instructs: if the image is not a valid invoice, return JSON with all fields as "-"
             prompt = """Extract invoice details including:
 - Customer Name (exact match)
 - Invoice Number/ID (any format)
@@ -135,7 +132,6 @@ Note: If the provided image is not a valid invoice, return JSON with all fields 
             # Parse and validate response JSON
             try:
                 invoice_data = json.loads(response.text)
-                # Check if every field in the invoice_data is "-" (after stripping whitespace)
                 if all(value.strip() == "-" for value in invoice_data.values()):
                     st.warning("⚠️ Invoice cannot be extracted from the provided image.")
                     st.stop()
