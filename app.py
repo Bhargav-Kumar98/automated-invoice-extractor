@@ -23,7 +23,7 @@ genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 # Use st.cache_resource to cache the connection
 @st.cache_resource
 def get_gs_client():
-    scope = ["https://www.googleapis.com/auth/spreadsheets"]
+    scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.file"]
     # Read service account credentials from st.secrets (ensure your secrets.toml contains a [gcp_service_account] table)
     creds = st.secrets["gcp_service_account"]
     credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds, scope)
